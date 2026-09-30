@@ -1,6 +1,7 @@
 // Vérifications automatiques de Carlito Fighter, à lancer dans la page ouverte avec ?debug :
 //   const src = await fetch('/__checks.js', { cache: 'no-store' }).then((r) => r.text()); await (0, eval)(src)
 // (copie ce fichier dans public/__checks.js le temps du test, il est dans le .gitignore). Durée : ~15 s.
+// Mode d'emploi complet : SKILL.md à côté.
 (async () => {
   const h = window.__hb, results = [];
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));

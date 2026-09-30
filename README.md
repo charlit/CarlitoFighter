@@ -51,8 +51,8 @@ npm install
 PORT=8195 node server.js
 ```
 
-Puis `http://localhost:8195/?debug` (API de test `window.__hb`). Les vérifications automatiques sont dans `checks.js`
-(mode d'emploi en tête du fichier). Pour tester le mode en ligne, ouvre le jeu dans deux onglets et choisis « En ligne ».
+Puis `http://localhost:8195/?debug` (API de test `window.__hb`). Les vérifications automatiques sont dans `.claude/skills/qa-jeu/checks.js`
+(mode d’emploi dans `SKILL.md` à côté). Pour tester le mode en ligne, ouvre le jeu dans deux onglets et choisis « En ligne ».
 
 ## Déployer sur le Mac mini
 
