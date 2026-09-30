@@ -56,6 +56,14 @@ Puis `http://localhost:8195/?debug` (API de test `window.__hb`). Les vérificati
 
 ## Déployer sur le Mac mini
 
+Première fois :
+
+```bash
+git clone https://github.com/charlit/CarlitoFighter.git ~/CarlitoFighter
+```
+
+Puis, à chaque mise à jour :
+
 ```bash
 cd ~/CarlitoFighter && git pull && docker build -t carlito-fighter . && docker rm -f carlito-fighter
 ```
