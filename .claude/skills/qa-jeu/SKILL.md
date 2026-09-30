@@ -1,13 +1,15 @@
 ---
 name: qa-jeu
-description: QA de Carlito Fighter (le jeu de combat à grosses têtes façon Street Fighter 2 de ce repo : aventure contre l'IA à 3 niveaux, Le Boss non jouable, à 2 sur le même écran, ou en ligne) — lance la suite de tests automatisés (coups, parades haute/basse, coups spéciaux et recharge, aventure et Boss non jouable, K.O. et manches, temps écoulé, niveaux d'IA, mode en ligne) via le mode ?debug, vérifie le rendu desktop et mobile paysage (joystick + boutons POING / PIED / ★), puis corrige et re-teste. Utiliser quand on demande « qa », « teste le jeu », « vérifie que ça marche », ou après toute modification de public/index.html ou server.js.
+description: QA de Carlito Fighter (le jeu de combat à grosses têtes façon Street Fighter 2 de ce repo : aventure contre l'IA à 3 niveaux, Le Boss non jouable, tableau d'honneur, ou en ligne) — lance la suite de tests automatisés (coups, parades haute/basse, coups spéciaux et recharge, aventure et Boss non jouable, inscription au tableau d'honneur, K.O. et manches, temps écoulé, niveaux d'IA, mode en ligne) via le mode ?debug, vérifie le rendu desktop et mobile paysage (joystick + boutons POING / PIED / ★), puis corrige et re-teste. Utiliser quand on demande « qa », « teste le jeu », « vérifie que ça marche », ou après toute modification de public/index.html ou server.js.
 ---
 
 # QA Carlito Fighter
 
 - `public/index.html` : tout le jeu (canvas 960×540, rendu à la densité de l'écran). Visages dans `public/heads/p1.png` … `p6.png`.
   Personnages dans `CHARS` (vitesse, saut, vie, force, coup spécial, décor), coups dans `MOVES`, décors dans `STAGES`, IA dans `AI_LEVELS` / `aiThink`.
-- `server.js` : sert le jeu **et** fait la mise en relation en ligne (WebSocket sur `…/ws`, dépendance `ws`, `GET api/lobby`).
+- `server.js` : sert le jeu **et** fait la mise en relation en ligne (WebSocket sur `…/ws`, dépendance `ws`, `GET api/lobby`),
+  et garde le **tableau d'honneur** (`GET/POST api/champions`, fichier `DATA_DIR/champions.json`, par défaut `data/`, ignoré par git).
+  Les tests y inscrivent des noms `QA…` : supprime `data/champions.json` en local si la liste t'encombre.
   Le 1er joueur qui cherche attend ; le 2e lance le combat. L'hôte (role 0, J1 rouge) fait tourner le combat et envoie
   l'état à chaque image ; l'invité (role 1, J2 bleu) n'envoie que ses commandes (`x`, `y` et les compteurs `p k s u`).
 
@@ -28,18 +30,19 @@ La QA teste le jeu **image par image** grâce au mode `?debug`. Le panneau navig
 | Appel | Effet |
 |---|---|
 | `start(a, b, { mode, ai })` | Combat direct (écran VS et « FIGHT » sautés), J1 perso `a`, J2 perso `b` (0 à 5). `mode` : `local` (défaut), `ai`, `online`. `ai: [niveau J1, niveau J2]` (0 facile, 1 moyen, 2 difficile, `null` = humain) — l'IA peut jouer contre l'IA |
-| `toMenu()` / `chooseMenu(k)` / `chooseLevel(l)` / `toSelect()` | Menu (0 = aventure, 1 = 2 joueurs, 2 = en ligne) ; aventure → page difficulté (`state` `level`, 0 facile, 1 moyen, 2 difficile) ; puis choix des persos |
+| `toMenu()` / `chooseMenu(k)` / `chooseLevel(l)` / `toSelect()` | Menu (0 = aventure, 1 = en ligne, 2 = champions ; plus de « 2 joueurs même écran », `mode: 'local'` ne sert qu'aux tests IA contre IA) ; aventure → page difficulté (`state` `level`, 0 facile, 1 moyen, 2 difficile) ; puis choix des persos |
 | `key(code)` / `tap(x, y)` | Appui de menu (`ArrowDown`, `Enter`, `KeyF`, `Escape`…) / toucher en coordonnées du jeu (carte `j` de la grille : `gridPos(j)`, j = rang dans `pickable`) |
 | `run(n)` | Avance de `n` images (60 par seconde) |
 | `press(i, k)` / `release(i, k)` / `releaseAll()` | Joueur `i` (0 = J1, 1 = J2), touche `left`, `right`, `up`, `down`, `p` (poing), `k` (pied), `s` (spécial) |
-| `info()` | `{ state, mode, aiLevel, aiSlots, me, round, wins, timeLeft, pick, ready, touchMode, koMsg, roundWin, endNote, stage, ladder, ladderIdx, net }` — `state` : `menu`, `level`, `select`, `wait`, `vs`, `intro`, `fight`, `ko`, `end` |
+| `info()` | `{ state, mode, aiLevel, aiSlots, me, round, wins, timeLeft, pick, ready, touchMode, koMsg, roundWin, endNote, stage, ladder, ladderIdx, net }` — `state` : `menu`, `level`, `select`, `register`, `champions`, `wait`, `vs`, `intro`, `fight`, `ko`, `end` |
 | `players()` / `projectiles()` / `ctl()` / `touches()` | Objets du jeu. Combattant : `x y f hp st move t crouch onGround cd inv guard ko` ; `st` : `free`, `atk`, `hit`, `block`, `down`, `win` |
+| `toRegister()` / `submitChampion()` / `toChampions()` / `champions()` / `myRank()` / `advLosses()` | Saisie du nom (formulaire HTML `#reg`, champ `#regName`), envoi, tableau d'honneur, rang obtenu, défaites de l'aventure en cours |
 | `setHp(i, v)` / `setTime(s)` / `setTouchMode(b)` / `render()` | PV, chrono, mode tactile (boutons à l'écran), redessin (obligatoire avant une capture si le panneau est masqué) |
 | `consts` / `chars` / `pickable` / `boss` / `moves` / `menu` / `aiLevels` / `stages` | Constantes et tables du jeu (`pickable` = persos jouables, sans Le Boss) |
 
 ## 3. Suite de tests automatisés
 
-La suite est dans `checks.js`, à côté de ce fichier : 11 tests, dont 2 en ligne (le test simule l'autre joueur avec son
+La suite est dans `checks.js`, à côté de ce fichier : 12 tests, dont 3 qui parlent au serveur (le test simule l'autre joueur avec son
 propre WebSocket). Le script est **asynchrone** :
 
 1. `cp .claude/skills/qa-jeu/checks.js public/__checks.js` (fichier dans le `.gitignore`).
@@ -58,7 +61,10 @@ c'est **le jeu** ou **le test** qui est en cause, corrige le bon côté, et ajou
 Règles de jeu que la suite protège :
 - **Aventure** : menu AVENTURE, puis une page à part pour la difficulté (clavier ↑ ↓ Entrée, doigt, Échap / ← MENU pour revenir) ; **Le Boss (perso 3) n'est jamais jouable** (5 cartes, clavier et doigt, à 2 aussi,
   refusé par le serveur en ligne). Parcours = les 4 autres persos jouables dans le désordre, puis Le Boss ; gagner → adversaire
-  suivant, perdre → on le retente, battre Le Boss → retour au menu.
+  suivant, perdre → on le retente (une défaite de plus), battre Le Boss → saisie du nom (Échap / Passer = menu).
+- **Tableau d'honneur** : le nom tapé part au serveur avec le perso, la difficulté et les défaites ; classement par difficulté
+  puis moins de défaites ; le serveur refuse Le Boss, un nom vide, une difficulté ou des défaites invalides, et nettoie le nom
+  (12 caractères, lettres / chiffres / espace . _ ' -). Menu CHAMPIONS → liste ; Entrée ou toucher → menu.
 - Poing à portée seulement ; **parade** = reculer (accroupi contre la balayette `ckick`, debout contre les coups sautés).
 - Chaque perso lance **son** spécial (`CHARS[k].sp`), puis doit attendre sa recharge (`cd`). Carlito n'a qu'une boule de soleil à l'écran à la fois.
 - K.O. → manche gagnée, manche suivante, **2 manches gagnantes** → fin. Temps écoulé → le plus en vie (en proportion) gagne la manche.
@@ -68,12 +74,15 @@ Règles de jeu que la suite protège :
 ## 4. Contrôles visuels (pas couverts par la suite)
 
 Captures : `start`, `run`, `render()`, puis `computer screenshot`. Vérifie :
-- **Menu** : titre, 3 pastilles (AVENTURE, 2 JOUEURS, EN LIGNE), **page difficulté** (3 pastilles + Le Boss qui attend à droite), les 6 têtes en bas, décor qui change toutes les 5 s. **Choix** : 5 cartes (3 + 2, sans Le Boss), fiches J1/J2 (stats, spécial), « ← MENU ».
+- **Menu** : titre, 3 pastilles (AVENTURE, EN LIGNE, CHAMPIONS), **page difficulté** (3 pastilles + Le Boss qui attend à droite), les 5 têtes jouables en bas (pas Le Boss), décor qui change toutes les 5 s. **Choix** : 5 cartes (3 + 2, sans Le Boss), fiches J1/J2 (stats, spécial), « ← MENU ».
 - **Écran VS** (en aventure : parcours en haut, ✔ sur les battus, « COMBAT FINAL ! » contre Le Boss), « MANCHE 1 / FIGHT ! », barres de vie (la rouge rattrape la jaune), ronds des manches gagnées, jauge de spécial, chrono.
 - **Combattants** : grosse tête détourée sur corps cartoon, poses (garde, coups, accroupi, saut, touché, au sol, victoire).
 - **Spéciaux** : boule de soleil à lunettes, charge avec poussière, uppercut avec traînée, onde du Tremblement, fumée violette d'Éclipse, tornade de feu.
 - **6 décors** (un par perso, on se bat chez J2) : plage, Paris, dojo, toit la nuit, désert de l'éclipse, volcan (braises animées).
 - **K.O.** (ralenti, « K.O. », « X gagne la manche », « PERFECT ! »), **fin** (GAGNÉ / PERDU / CHAMPION ! en aventure, prochain adversaire).
+- **Inscription** : « CHAMPION ! », sa tête, difficulté et défaites, champ de nom + ENREGISTRER + Passer **sous** le texte (calé sur le canvas
+  par `placeReg`), clavier du téléphone qui s'ouvre, espace et Entrée qui marchent dans le champ.
+- **Tableau d'honneur** : 10 premiers (médailles 🥇🥈🥉), tête du perso, nom, difficulté en couleur, défaites ; ma ligne surlignée.
 - **Mobile paysage** : `resize_window` 812×375, `setTouchMode(true)`. Pas de défilement, joystick fantôme sous le pouce,
   boutons POING / PIED / ★ en bas à droite (à 2 : vers le centre de chaque moitié), ★ grisé pendant la recharge.
   Remets ensuite le preset `desktop`.
@@ -87,7 +96,7 @@ Captures : `start`, `run`, `render()`, puis `computer screenshot`. Vérifie :
 
 ## 6. Rapport
 
-Termine par un résumé en français : résultat de la suite (X/11, détail des échecs), contrôles visuels faits
+Termine par un résumé en français : résultat de la suite (X/12, détail des échecs), contrôles visuels faits
 (capture si quelque chose a changé), bugs corrigés avec `fichier:ligne`, ce qui n'a pas pu être vérifié.
 
 Ne commite pas sans que l'utilisateur le demande.

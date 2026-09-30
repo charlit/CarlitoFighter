@@ -20,10 +20,17 @@
   canvas { display: block; width: min(100vw, 177.78dvh); aspect-ratio: 16 / 9; }
   #turn { display: none; position: fixed; inset: 0; background: #1a1f3a; color: #ffd93d; font-size: 28px; text-align: center; align-items: center; justify-content: center; padding: 24px; -webkit-text-stroke: 1px #000; }
   @media (orientation: portrait) and (pointer: coarse) { #turn { display: flex; } }
+  #reg { position: fixed; left: 50%; top: 70%; transform: translate(-50%, -50%); display: flex; gap: 10px; align-items: center; flex-wrap: wrap; justify-content: center; }
+  #reg[hidden] { display: none; }
+  #reg input, #reg button { font: 22px 'Luckiest Guy', Impact, sans-serif; border: 4px solid #1b1b2f; border-radius: 14px; padding: 8px 14px; }
+  #reg input { width: 11ch; text-align: center; background: #fff; color: #1b1b2f; outline: 4px solid #ffd93d; user-select: text; -webkit-user-select: text; }
+  #reg button { background: #ffd93d; color: #1b1b2f; cursor: pointer; }
+  #reg button[type=button] { background: #3a3f6a; color: #fff; font-size: 16px; }
 </style>
 </head>
 <body>
 <canvas id="c" width="960" height="540"></canvas>
+<form id="reg" hidden autocomplete="off"><input id="regName" maxlength="12" placeholder="Ton nom" enterkeyhint="done" aria-label="Ton nom"><button>ENREGISTRER</button><button type="button" id="regSkip">Passer</button></form>
 <div id="turn">📱↻<br>Tourne ton téléphone<br>pour jouer !</div>
 <script>
 'use strict';
@@ -103,7 +110,8 @@ function fitCanvas() {
 addEventListener('resize', fitCanvas);
 
 // ================= modes =================
-// mode : 'ai' (aventure contre l'ordinateur), 'local' (2 joueurs, même écran), 'online' (contre un joueur en ligne)
+// mode : 'ai' (aventure contre l'ordinateur), 'online' (contre un joueur en ligne).
+// 'local' (2 joueurs sur le même écran) n'est plus au menu ; il sert encore aux tests (IA contre IA).
 let mode = 'local', aiLevel = 1;
 let me = 0;                       // joueur contrôlé par cet appareil en solo / en ligne (1 = invité en ligne)
 const aiSlots = [null, null];     // niveau d'IA de chaque joueur (null = humain)
@@ -114,8 +122,8 @@ const AI_LEVELS = [
 ];
 const MENU = [
   { label: 'AVENTURE', mode: 'ai', c: '#ffd93d' },
-  { label: '2 JOUEURS · MÊME ÉCRAN', mode: 'local', c: '#2f7bff' },
   { label: 'EN LIGNE', mode: 'online', c: '#ff7ad9' },
+  { label: 'CHAMPIONS', mode: 'champions', c: '#3ddc84' },
 ];
 // page suivante de l'aventure : la difficulté
 const LEVELS = [
@@ -123,7 +131,7 @@ const LEVELS = [
   { label: 'MOYEN', sub: 'Il faut savoir parer', c: '#ffd93d' },
   { label: 'DIFFICILE', sub: 'Le Boss ne pardonne rien', c: '#ff3b3b' },
 ];
-const pillRect = (k) => ({ x: W / 2 - 240, y: 160 + k * 84, w: 480, h: 62 });
+const pillRect = (k) => ({ x: W / 2 - 240, y: 150 + k * 72, w: 480, h: 58 });
 // grille de choix : 3 persos en haut, 2 en bas (j = rang dans PICKABLE)
 const gridPos = (j) => j < 3 ? { x: W / 2 + (j - 1) * 128, y: 222 } : { x: W / 2 + (j - 3.5) * 128, y: 350 };
 let menuSel = 0, levelSel = 1;
@@ -150,6 +158,7 @@ const dbgHeld = new Set();
 const anyKey = (m, k) => KEYMAP[m][k].some((c) => keysDown.has(c));
 addEventListener('keydown', (e) => {
   unlockAudio();
+  if (state === 'register') { if (e.code === 'Escape') toMenu(); return; } // on tape son nom : le jeu ne capte pas le clavier
   if (GAME_KEYS.has(e.code)) e.preventDefault();
   touchMode = false;
   if (!e.repeat) uiKey(e.code);
@@ -178,6 +187,7 @@ function btnsOf(p) {
 }
 document.addEventListener('pointerdown', (e) => {
   unlockAudio();
+  if (e.target.closest && e.target.closest('#reg')) return; // laisse le champ de nom et ses boutons marcher
   if (e.pointerType !== 'mouse') touchMode = true;
   e.preventDefault();
   const pt = toCanvas(e);
@@ -369,7 +379,7 @@ function roundOver(win, msg) {
 }
 function endMatch() { state = 'end'; endT = 0; endConfetti(); }
 function matchWinner() { return wins[0] === wins[1] ? -1 : wins[0] > wins[1] ? 0 : 1; }
-function toMenu() { closeNet(); state = 'menu'; aiSlots[0] = aiSlots[1] = null; me = 0; particles.length = 0; touches.clear(); pollLobby(); }
+function toMenu() { closeNet(); reg.hidden = true; state = 'menu'; aiSlots[0] = aiSlots[1] = null; me = 0; particles.length = 0; touches.clear(); pollLobby(); }
 // Sur l'accueil, on demande au serveur toutes les 3 s si un joueur attend en ligne.
 let lobby = null;
 function pollLobby() {
@@ -380,8 +390,9 @@ function toSelect() {
   pick.forEach((k, i) => { if (!PICKABLE.includes(k)) pick[i] = PICKABLE[i ? PICKABLE.length - 1 : 0]; });
   state = 'select'; ready[0] = ready[1] = false; particles.length = 0; touches.clear(); }
 function chooseMenu(k) {
-  const m = MENU[k]; menuSel = k;
-  mode = m.mode; sfx.tick();
+  const m = MENU[k]; menuSel = k; sfx.tick();
+  if (m.mode === 'champions') return toChampions();
+  mode = m.mode;
   if (m.mode === 'ai') state = 'level'; else toSelect();
 }
 function chooseLevel(l) { aiLevel = levelSel = l; mode = 'ai'; sfx.tick(); toSelect(); }
@@ -389,7 +400,7 @@ function confirmSolo() {
   sfx.tick();
   if (mode === 'ai') {
     me = 0; aiSlots[0] = null; aiSlots[1] = aiLevel;
-    ladder = PICKABLE.filter((k) => k !== pick[0]).sort(() => Math.random() - 0.5).concat(BOSS); ladderIdx = 0;
+    ladder = PICKABLE.filter((k) => k !== pick[0]).sort(() => Math.random() - 0.5).concat(BOSS); ladderIdx = 0; advLosses = 0;
     pick[1] = ladder[0];
     startMatch();
   } else goOnline();
@@ -399,11 +410,42 @@ function afterEnd() {
   if (mode === 'local') return toSelect();
   // aventure : on passe à l'adversaire suivant si on a gagné, sinon on retente le même
   if (matchWinner() === 0) {
-    if (++ladderIdx >= ladder.length) return toMenu();
+    if (++ladderIdx >= ladder.length) return toRegister(); // Le Boss est battu : on s'inscrit au tableau d'honneur
     pick[1] = ladder[ladderIdx];
-  }
+  } else advLosses++;
   startMatch();
 }
+
+// ================= tableau d'honneur =================
+// Après avoir battu Le Boss, on tape son nom (un vrai champ de texte, pour avoir le clavier du téléphone) ;
+// le serveur garde la liste (api/champions), visible par tous depuis le menu CHAMPIONS.
+let advLosses = 0, champs = null, myRank = 0, champMsg = '';
+const reg = document.getElementById('reg'), regName = document.getElementById('regName');
+// le champ se cale à 70 % de la hauteur du jeu, sous le texte dessiné dans le canvas
+function placeReg() { const r = canvas.getBoundingClientRect(); reg.style.top = (r.top + r.height * 0.7) + 'px'; }
+addEventListener('resize', placeReg);
+function toRegister() {
+  state = 'register'; champMsg = ''; regName.value = ''; reg.hidden = false; placeReg();
+  setTimeout(() => regName.focus(), 50);
+}
+function toChampions(rank = 0) {
+  state = 'champions'; myRank = rank; reg.hidden = true;
+  if (!rank) {
+    champs = null; champMsg = 'Chargement…';
+    fetch('api/champions', { cache: 'no-store' }).then((r) => r.json()).then((l) => { champs = l; }).catch(() => { champMsg = 'Tableau indisponible'; });
+  }
+}
+function submitChampion() {
+  const name = regName.value.trim();
+  if (!name) { regName.focus(); return Promise.resolve(); }
+  champMsg = 'Enregistrement…';
+  return fetch('api/champions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, char: pick[0], level: aiLevel, losses: advLosses }) })
+    .then((r) => (r.ok ? r.json() : Promise.reject()))
+    .then((j) => { champs = j.list; regName.blur(); toChampions(j.rank); sfx.tick(); })
+    .catch(() => { champMsg = 'Impossible d’enregistrer, réessaie'; });
+}
+reg.addEventListener('submit', (e) => { e.preventDefault(); submitChampion(); });
+document.getElementById('regSkip').addEventListener('click', () => { regName.blur(); toMenu(); });
 
 // ---- menus : clavier ----
 function uiKey(code) {
@@ -441,7 +483,7 @@ function uiKey(code) {
     if (vsT > 40 && ok && !(net && net.role === 1)) startRound();
   } else if (state === 'end') {
     if (endT > 60 && ok) afterEnd();
-  }
+  } else if (state === 'champions' && ok) toMenu();
 }
 // ---- menus : toucher / souris ----
 // Plein écran au premier toucher sur téléphone (Android). Safari sur iPhone ne le permet pas aux pages web :
@@ -475,6 +517,7 @@ function uiTap(pt) {
   } else if (state === 'wait') { sfx.tick(); toMenu(); }
   else if (state === 'vs' && vsT > 40 && !(net && net.role === 1)) startRound();
   else if (state === 'end' && endT > 60) afterEnd();
+  else if (state === 'champions') { sfx.tick(); toMenu(); }
 }
 
 // ================= en ligne =================
@@ -1178,8 +1221,8 @@ function drawMenu() {
       ctx.font = font(15); outlinedText(h.name + ' t’attend !', r.x + r.w + 45, r.y + r.h + 10, '#3ddc84', 4);
     }
   });
-  // les 6 têtes qui défilent en bas
-  CHARS.forEach((ch, k) => drawHead(ch, 90 + k * 156, 505 + Math.sin(frame / 12 + k) * 4, k < 3 ? 1 : -1, 52));
+  // les têtes jouables en bas (Le Boss reste une surprise)
+  PICKABLE.forEach((k, j) => drawHead(CHARS[k], 110 + j * 185, 505 + Math.sin(frame / 12 + j) * 4, j < 2 ? 1 : -1, 52));
   if (!touchMode) { ctx.font = font(14); outlinedText('↑ ↓ pour choisir · Entrée pour valider', W / 2, 468, '#fff', 4); }
   else if (IS_IOS && !IS_APP) { ctx.font = font(15); outlinedText('Plein écran sur iPhone : bouton Partager ⬆ puis « Sur l’écran d’accueil »', W / 2, 468, '#ffd93d', 4); }
 }
@@ -1238,7 +1281,7 @@ function drawSelect() {
   } else outlinedText('Flèches choisir · Entrée : combattre', W / 2, 440, '#ffd93d', 5);
   if (!touchMode) {
     ctx.font = font(13);
-    outlinedText('En combat — J1 : ZQSD bouger/sauter/s’accroupir · F poing · G pied · H spécial   |   J2 : flèches · K poing · L pied · M spécial', W / 2, 518, '#fff', 4);
+    outlinedText('En combat : ZQSD ou flèches pour bouger / sauter / s’accroupir · F ou K poing · G ou L pied · H ou M spécial', W / 2, 518, '#fff', 4);
   }
 }
 function drawWait() {
@@ -1282,6 +1325,35 @@ function drawPath() {
   ctx.font = font(20);
   outlinedText('COMBAT ' + (ladderIdx + 1) + ' / ' + n + (ladder[ladderIdx] === BOSS ? ' · COMBAT FINAL !' : ''), W / 2, 96, '#fff', 5);
 }
+function drawRegister() {
+  dim(0.7);
+  bigText('CHAMPION !', 70, '#ffd93d', 72);
+  drawHead(CHARS[pick[0]], W / 2, 185 + Math.sin(frame / 8) * 6, 1, 140, Math.sin(frame / 12) * 0.08);
+  ctx.font = font(22);
+  outlinedText('Tu as battu Le Boss en ' + LEVELS[aiLevel].label + ' · ' + (advLosses ? advLosses + ' défaite' + (advLosses > 1 ? 's' : '') : 'sans aucune défaite !'), W / 2, 280, LEVELS[aiLevel].c, 6);
+  ctx.font = font(20); outlinedText('Entre ton nom pour le tableau d’honneur :', W / 2, 312, '#fff', 5);
+  if (champMsg) { ctx.font = font(18); outlinedText(champMsg, W / 2, 450, '#ff7ad9', 5); }
+}
+function drawChampions() {
+  dim(0.75);
+  ctx.font = font(18); outlinedText('← MENU', 70, 28, '#fff', 5);
+  bigText('TABLEAU D’HONNEUR', 58, '#ffd93d', 50);
+  ctx.font = font(16); outlinedText('Ceux qui ont battu Le Boss', W / 2, 98, '#fff', 4);
+  if (!champs) { ctx.font = font(24); outlinedText(champMsg, W / 2, 270, '#fff', 6); return; }
+  if (!champs.length) { ctx.font = font(26); outlinedText('Personne n’a encore battu Le Boss… à toi !', W / 2, 270, '#fff', 6); }
+  champs.slice(0, 10).forEach((c, i) => {
+    const y = 134 + i * 36, lv = LEVELS[c.level] || LEVELS[0];
+    if (i + 1 === myRank) { ctx.fillStyle = 'rgba(255,217,61,.3)'; ctx.beginPath(); ctx.roundRect(170, y - 17, 620, 34, 10); ctx.fill(); }
+    ctx.font = font(20); ctx.textAlign = 'right';
+    outlinedText(['🥇', '🥈', '🥉'][i] || (i + 1) + '.', 222, y + 1, '#fff', 5);
+    drawHead(CHARS[c.char] || CHARS[0], 252, y, 1, 32);
+    ctx.textAlign = 'left'; outlinedText(c.name, 280, y + 1, i + 1 === myRank ? '#ffd93d' : '#fff', 5);
+    ctx.textAlign = 'center'; outlinedText(lv.label, 590, y + 1, lv.c, 5);
+    ctx.font = font(15); outlinedText(c.losses ? c.losses + ' défaite' + (c.losses > 1 ? 's' : '') : 'sans défaite', 725, y + 1, '#fff', 4);
+  });
+  if (myRank > 10) { ctx.font = font(20); outlinedText('Tu es ' + myRank + 'e du classement !', W / 2, 500, '#ffd93d', 5); }
+  ctx.font = font(15); outlinedText(touchMode ? 'Touche l’écran pour revenir' : 'Entrée pour revenir', W / 2, 525, '#fff', 4);
+}
 function bigText(t, y, col, size, k = 1) {
   ctx.save(); ctx.translate(W / 2, y); ctx.scale(k, k); ctx.rotate(-0.04);
   ctx.font = font(size); outlinedText(t, 0, 0, col, size / 8); ctx.restore();
@@ -1304,7 +1376,7 @@ function drawEnd() {
   if (endNote) { ctx.font = font(24); outlinedText(endNote, W / 2, 40, '#ff7ad9', 6); }
   if (endT > 60) {
     let msg = touchMode ? 'Touche l’écran pour continuer' : 'Entrée pour continuer · Échap : menu';
-    if (mode === 'ai') msg = win === 0 ? (ladderIdx + 1 < ladder.length ? 'Prochain adversaire : ' + CHARS[ladder[ladderIdx + 1]].name + ' ! ' : 'Tu as battu tout le monde ! ') + (touchMode ? '(touche)' : '(Entrée)') : 'Continuer ? ' + (touchMode ? 'Touche l’écran' : 'Entrée') + ' pour réessayer';
+    if (mode === 'ai') msg = win === 0 ? (ladderIdx + 1 < ladder.length ? 'Prochain adversaire : ' + CHARS[ladder[ladderIdx + 1]].name + ' ! ' : 'Inscris-toi au tableau d’honneur ! ') + (touchMode ? '(touche)' : '(Entrée)') : 'Continuer ? ' + (touchMode ? 'Touche l’écran' : 'Entrée') + ' pour réessayer';
     ctx.font = font(20); outlinedText(msg, W / 2, 462, '#ffd93d', 5);
   }
 }
@@ -1338,6 +1410,8 @@ function render() {
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (state === 'menu') drawMenu();
   else if (state === 'level') drawLevel();
+  else if (state === 'register') drawRegister();
+  else if (state === 'champions') drawChampions();
   else if (state === 'select') drawSelect();
   else if (state === 'wait') drawWait();
   else if (state === 'vs') drawVs();
@@ -1383,7 +1457,7 @@ if (DEBUG) {
       ladder = [b]; ladderIdx = 0;
       startMatch(); startRound(); cd = 1; step();
     },
-    toMenu, toSelect, chooseMenu, chooseLevel, key: uiKey, tap: (x, y) => uiTap({ x, y }),
+    toMenu, toSelect, chooseMenu, chooseLevel, toRegister, toChampions, submitChampion, champions: () => champs, myRank: () => myRank, advLosses: () => advLosses, key: uiKey, tap: (x, y) => uiTap({ x, y }),
     run(n = 1) { for (let i = 0; i < n; i++) step(); },
     // touches : left right up down p k s
     press(i, k) { dbgHeld.add(i + ':' + k); }, release(i, k) { dbgHeld.delete(i + ':' + k); }, releaseAll() { dbgHeld.clear(); },

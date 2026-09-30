@@ -11,6 +11,29 @@ const PUB = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
 const PICKABLE = [0, 1, 2, 4, 5]; // persos jouables (3, Le Boss, est réservé à l'aventure) : même liste que PICKABLE dans index.html
 
+// Tableau d'honneur : ceux qui ont fini l'aventure (battu Le Boss). Gardé dans DATA_DIR/champions.json
+// (un volume Docker, pour survivre aux mises à jour). Classement : difficulté, puis le moins de défaites, puis le plus ancien.
+// ponytail: le jeu tourne dans le navigateur, un tricheur peut s'inscrire sans jouer ; ok entre potes, sinon valider côté serveur.
+const DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+const CHAMPIONS = path.join(DATA_DIR, 'champions.json');
+let champions = [];
+try { champions = JSON.parse(fs.readFileSync(CHAMPIONS, 'utf8')); } catch (e) { /* pas encore de champion */ }
+const byRank = (a, b) => b.level - a.level || a.losses - b.losses || a.date - b.date;
+function addChampion(m) {
+  const name = String(m.name || '').replace(/[^\p{L}\p{N} ._'-]/gu, '').replace(/\s+/g, ' ').trim().slice(0, 12);
+  const char = m.char, level = m.level, losses = m.losses;
+  if (!name || !PICKABLE.includes(char) || ![0, 1, 2].includes(level) || !Number.isInteger(losses) || losses < 0 || losses > 999) return null;
+  const entry = { name, char, level, losses, date: Date.now() };
+  champions.push(entry);
+  champions.sort(byRank);
+  champions = champions.slice(0, 100);
+  fs.mkdirSync(DATA_DIR, { recursive: true });
+  fs.writeFile(CHAMPIONS, JSON.stringify(champions), (err) => err && console.error('champions', err));
+  const rank = champions.indexOf(entry) + 1;
+  return rank || null;
+}
+const sendJson = (res, code, obj) => { res.writeHead(code, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' }); res.end(JSON.stringify(obj)); };
+
 const server = http.createServer((req, res) => {
   let p;
   try { p = decodeURIComponent(new URL(req.url, 'http://x').pathname); } catch (e) { res.writeHead(400); return res.end(); }
@@ -19,6 +42,20 @@ const server = http.createServer((req, res) => {
     const w = waiting && waiting.readyState === 1;
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     return res.end(JSON.stringify({ waiting: !!w, head: w ? waiting.head : null }));
+  }
+  if (p === '/api/champions') {
+    if (req.method === 'GET') return sendJson(res, 200, champions.slice(0, 20));
+    if (req.method !== 'POST') return sendJson(res, 405, {});
+    let body = '';
+    req.on('data', (c) => { body += c; if (body.length > 1000) req.destroy(); });
+    req.on('end', () => {
+      let m; try { m = JSON.parse(body); } catch (e) { return sendJson(res, 400, {}); }
+      const rank = addChampion(m);
+      if (!rank) return sendJson(res, 400, { error: 'invalide' });
+      console.log('champion', champions[rank - 1].name, 'rang', rank);
+      sendJson(res, 200, { rank, list: champions.slice(0, 20) });
+    });
+    return;
   }
   if (p.endsWith('/')) p += 'index.html';
   const file = path.join(PUB, path.normalize(p));

@@ -1,11 +1,12 @@
 # Carlito Fighter
 
-Jeu de combat façon *Street Fighter 2*, avec les grosses têtes de Carlito Soccer. Trois façons de jouer :
+Jeu de combat façon *Street Fighter 2*, avec les grosses têtes de Carlito Soccer. Deux façons de jouer :
 
 - **Aventure contre l'IA** : on choisit AVENTURE, puis la difficulté sur la page suivante (facile, moyen, difficile), puis on affronte un à un les 4 autres
   combattants et enfin **Le Boss**. L'écran VS montre le parcours (adversaires battus ✔, combat en cours, Le Boss au bout).
-  Perdu ? On retente le même adversaire. **Le Boss n'est pas jouable** (ni en aventure, ni à 2, ni en ligne).
-- **2 joueurs sur le même écran** (clavier ou un téléphone/tablette partagé) ;
+  Perdu ? On retente le même adversaire. **Le Boss n'est pas jouable** (ni en aventure, ni en ligne).
+  **Battre Le Boss** permet de s'inscrire au **tableau d'honneur** (menu CHAMPIONS) : on tape son nom, et le classement
+  se fait par difficulté puis par nombre de défaites pendant l'aventure. La liste est gardée par le serveur (`data/champions.json`).
 - **En ligne** : on attend qu'un autre joueur choisisse « En ligne », le combat démarre tout seul
   (l'accueil affiche quand quelqu'un attend déjà).
 
@@ -31,16 +32,16 @@ Les réglages (vitesse, saut, vie, force) sont dans le tableau `CHARS`, les coup
 
 **Clavier** :
 
-| | J1 (rouge) | J2 (bleu) |
-|---|---|---|
-| Marcher / sauter / s'accroupir | Q D / Z / S | ← → / ↑ / ↓ |
-| Poing · Pied · Spécial | F · G · H | K · L · M (ou pavé num. 1 2 3) |
+| | Au choix |
+|---|---|
+| Marcher / sauter / s'accroupir | Q D / Z / S, ou ← → / ↑ / ↓ |
+| Poing · Pied · Spécial | F · G · H, ou K · L · M (ou pavé num. 1 2 3) |
 
-Seul, les deux jeux de touches marchent. **Parer** = reculer (accroupi contre les balayettes, debout contre les coups sautés).
+**Parer** = reculer (accroupi contre les balayettes, debout contre les coups sautés).
 Échap = retour au menu.
 
 **Au doigt (téléphone en paysage)** : le pouce gauche est un joystick invisible (glisser ◀ ▶ marcher, ↑ sauter,
-↓ s'accroupir) ; à droite, 3 boutons POING · PIED · ★. À 2 sur le même écran : une moitié d'écran chacun.
+↓ s'accroupir) ; à droite, 3 boutons POING · PIED · ★.
 
 ## Tester en local
 
@@ -70,8 +71,11 @@ cd ~/CarlitoFighter && git pull && docker build -t carlito-fighter . && docker r
 ```
 
 ```bash
-docker run -d --name carlito-fighter --restart unless-stopped -p 8087:8080 carlito-fighter
+docker run -d --name carlito-fighter --restart unless-stopped -p 8087:8080 -v ~/CarlitoFighter-data:/app/data carlito-fighter
 ```
+
+Le `-v` garde le tableau d'honneur dans `~/CarlitoFighter-data` sur le Mac mini : sans lui, la liste serait perdue
+à chaque mise à jour du conteneur.
 
 Puis dans `~/hub/Caddyfile` : `redir /carlitofighter /carlitofighter/` et
 `handle_path /carlitofighter/* { reverse_proxy host.docker.internal:8087 }`, et un lien dans `~/hub/site/index.html`.

@@ -57,7 +57,7 @@
     h.tap(h.consts.W / 2, 190); // pastille FACILE
     if (h.info().state !== 'select' || h.info().aiLevel !== 0) bad.push('doigt facile');
     h.toMenu(); h.chooseMenu(0); h.key('Escape'); if (h.info().state !== 'menu') bad.push('échap');
-    h.toMenu(); h.chooseMenu(1); if (h.info().state !== 'select' || h.info().mode !== 'local') bad.push('2 joueurs');
+    if (h.menu.some((m) => m.mode === 'local')) bad.push('2 joueurs encore au menu');
     return !bad.length || bad;
   });
   await check('aventure : Le Boss pas jouable, 4 persos puis Le Boss, on avance en gagnant', () => {
@@ -74,8 +74,37 @@
       if (h.info().state !== 'end') { bad.push('fin ' + f + ' ' + h.info().state); break; }
       h.run(70); h.key('Enter');
     }
-    if (h.info().state !== 'menu') bad.push('après le Boss : ' + h.info().state);
-    h.toMenu(); h.chooseMenu(1); if (h.info().pick.includes(B)) bad.push('2 joueurs');
+    if (h.info().state !== 'register') bad.push('après le Boss : ' + h.info().state);
+    h.key('Escape'); if (h.info().state !== 'menu') bad.push('échap inscription');
+    return !bad.length || bad;
+  });
+  await check('tableau d’honneur : on s’inscrit après Le Boss, le serveur trie et refuse le n’importe quoi', async () => {
+    const bad = [], post = (b) => fetch('/api/champions', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) });
+    // saisie du nom après la victoire contre Le Boss (2 défaites dans l'aventure)
+    h.toMenu(); h.chooseMenu(0); h.chooseLevel(2); h.tap(h.gridPos(0).x, h.gridPos(0).y);
+    for (let f = 0; f < 5; f++) {
+      if (f === 0) for (let l = 0; l < 2; l++) { h.run(300); for (let r = 0; r < 2; r++) { h.run(130); h.setHp(0, 0); h.run(2); h.run(200); } h.run(70); h.key('Enter'); }
+      h.run(300); for (let r = 0; r < 2; r++) { h.run(130); h.setHp(1, 0); h.run(2); h.run(200); } h.run(70); h.key('Enter');
+    }
+    const form = document.getElementById('reg');
+    if (h.info().state !== 'register' || form.hidden) bad.push('pas de saisie : ' + h.info().state);
+    if (h.advLosses() !== 2) bad.push('défaites ' + h.advLosses());
+    const name = 'QA' + (Date.now() % 1e6);
+    document.getElementById('regName').value = name;
+    await h.submitChampion();
+    const me = (h.champions() || []).find((c) => c.name === name);
+    if (h.info().state !== 'champions' || !form.hidden || !h.myRank() || !me || me.level !== 2 || me.losses !== 2 || me.char !== h.pickable[0]) bad.push('inscription ' + JSON.stringify({ st: h.info().state, rank: h.myRank(), me }));
+    // tri : difficulté puis moins de défaites
+    const l = h.champions(); for (let i = 1; i < l.length; i++) if (l[i - 1].level < l[i].level || (l[i - 1].level === l[i].level && l[i - 1].losses > l[i].losses)) bad.push('tri ' + i);
+    // le serveur refuse : Le Boss, nom vide, difficulté inconnue ; il nettoie les noms
+    for (const b of [{ name: 'X', char: h.boss, level: 0, losses: 0 }, { name: '  ', char: 0, level: 0, losses: 0 }, { name: 'X', char: 0, level: 7, losses: 0 }, { name: 'X', char: 0, level: 0, losses: -1 }]) if ((await post(b)).status !== 400) bad.push('accepté ' + JSON.stringify(b));
+    const j = await (await post({ name: '<b>Zo\u0000é</b> très long nom', char: 0, level: 0, losses: 99 })).json();
+    const cleaned = j.list.find((c, i) => i + 1 === j.rank) || {}; // il est peut-être hors du top 20 : on regarde seulement s'il y est
+    if (j.rank <= 20 && (cleaned.name.length > 12 || /[<>\u0000]/.test(cleaned.name))) bad.push('nom pas nettoyé ' + cleaned.name);
+    // menu CHAMPIONS
+    h.toMenu(); h.chooseMenu(2); if (h.info().state !== 'champions') bad.push('menu champions');
+    await sleep(300); if (!Array.isArray(h.champions())) bad.push('liste pas chargée');
+    h.key('Enter'); if (h.info().state !== 'menu') bad.push('retour menu');
     return !bad.length || bad;
   });
   await check('en ligne : le serveur refuse Le Boss', async () => {
@@ -97,7 +126,7 @@
   });
   await check('IA difficile bat un joueur immobile', () => match(0, 3, [null, 2]).win === 1);
   await check('en ligne : hôte, commandes de l’invité, départ', async () => {
-    h.toMenu(); h.chooseMenu(2); h.tap(h.consts.W / 2, 222); await sleep(300);
+    h.toMenu(); h.chooseMenu(1); h.tap(h.consts.W / 2, 222); await sleep(300);
     const g = new WebSocket('ws://' + location.host + '/ws'); let snaps = 0;
     g.onmessage = (e) => { if (JSON.parse(e.data).t === 's') snaps++; };
     await new Promise((r) => { g.onopen = r; });
