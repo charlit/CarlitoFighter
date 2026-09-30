@@ -1,0 +1,9 @@
+{
+  "name": "carlito-fighter",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Carlito Fighter : jeu de combat à grosses têtes façon Street Fighter 2 (IA, 2 joueurs, en ligne)",
+  "main": "server.js",
+  "scripts": { "start": "node server.js" },
+  "dependencies": { "ws": "^8.18.0" }
+}
