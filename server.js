@@ -9,7 +9,7 @@ const { WebSocketServer } = require('ws');
 const PORT = process.env.PORT || 8080;
 const PUB = path.join(__dirname, 'public');
 const TYPES = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8', '.png': 'image/png', '.css': 'text/css', '.json': 'application/json', '.svg': 'image/svg+xml', '.ico': 'image/x-icon' };
-const PICKABLE = [0, 1, 2, 3, 4, 5]; // tous les personnages sont jouables (même liste que CHARS dans index.html)
+const PICKABLE = [0, 1, 2, 4, 5]; // persos jouables (3, Le Boss, est réservé à l'aventure) : même liste que PICKABLE dans index.html
 
 const server = http.createServer((req, res) => {
   let p;

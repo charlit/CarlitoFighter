@@ -29,7 +29,7 @@
   await check('chaque spécial se lance et respecte son temps de recharge', () => {
     const bad = [];
     for (let k = 0; k < 6; k++) {
-      h.start(k, 0); h.press(0, 's'); h.run(2);
+      h.start(k, k ? 0 : 1); h.press(0, 's'); h.run(2);
       if (h.players()[0].move !== h.chars[k].sp) bad.push(h.chars[k].name);
       h.run(20); h.releaseAll(); h.press(0, 's'); h.run(2); h.releaseAll();
       if (h.players()[0].cd === 0) bad.push(h.chars[k].name + ' cd');
@@ -46,6 +46,46 @@
   await check('temps écoulé : le plus en vie gagne la manche', () => {
     h.start(0, 3); h.setHp(0, 50); h.setTime(0.01); h.run(2); return h.info().koMsg === 'TEMPS !' && h.info().roundWin === 1 || h.info();
   });
+  await check('menu : AVENTURE puis une page pour la difficulté (clavier et doigt)', () => {
+    const bad = [];
+    h.toMenu(); h.key('Enter'); // 1re pastille = AVENTURE
+    if (h.info().state !== 'level') bad.push('clavier : ' + h.info().state);
+    h.key('ArrowDown'); h.key('Enter');
+    if (h.info().state !== 'select' || h.info().aiLevel !== 2 || h.info().mode !== 'ai') bad.push('clavier difficile : ' + JSON.stringify(h.info()));
+    h.toMenu(); h.tap(h.consts.W / 2, 190); // pastille AVENTURE
+    if (h.info().state !== 'level') bad.push('doigt : ' + h.info().state);
+    h.tap(h.consts.W / 2, 190); // pastille FACILE
+    if (h.info().state !== 'select' || h.info().aiLevel !== 0) bad.push('doigt facile');
+    h.toMenu(); h.chooseMenu(0); h.key('Escape'); if (h.info().state !== 'menu') bad.push('échap');
+    h.toMenu(); h.chooseMenu(1); if (h.info().state !== 'select' || h.info().mode !== 'local') bad.push('2 joueurs');
+    return !bad.length || bad;
+  });
+  await check('aventure : Le Boss pas jouable, 4 persos puis Le Boss, on avance en gagnant', () => {
+    const B = h.boss, bad = [];
+    h.toMenu(); h.chooseMenu(0); h.chooseLevel(1);
+    for (let n = 0; n < 12; n++) { h.key(n % 3 ? 'ArrowRight' : 'ArrowDown'); if (h.info().pick[0] === B) bad.push('clavier'); }
+    h.pickable.forEach((_, j) => { h.toMenu(); h.chooseMenu(0); h.chooseLevel(1); const g = h.gridPos(j); h.tap(g.x, g.y); if (h.info().pick[0] === B) bad.push('doigt'); });
+    const { ladder, pick } = h.info();
+    if (ladder.length !== 5 || ladder[4] !== B || ladder.includes(pick[0]) || new Set(ladder).size !== 5) bad.push('parcours ' + ladder);
+    // gagner les 5 combats : adversaire suivant à chaque fois, puis retour au menu
+    for (let f = 0; f < 5; f++) {
+      h.run(300); if (h.info().pick[1] !== ladder[f]) bad.push('adversaire ' + f);
+      for (let r = 0; r < 2; r++) { h.run(130); h.setHp(1, 0); h.run(2); h.run(200); }
+      if (h.info().state !== 'end') { bad.push('fin ' + f + ' ' + h.info().state); break; }
+      h.run(70); h.key('Enter');
+    }
+    if (h.info().state !== 'menu') bad.push('après le Boss : ' + h.info().state);
+    h.toMenu(); h.chooseMenu(1); if (h.info().pick.includes(B)) bad.push('2 joueurs');
+    return !bad.length || bad;
+  });
+  await check('en ligne : le serveur refuse Le Boss', async () => {
+    const ws = new WebSocket('ws://' + location.host + '/ws');
+    await new Promise((r) => { ws.onopen = r; });
+    ws.send(JSON.stringify({ t: 'find', head: h.boss })); await sleep(200);
+    const l = await fetch('/api/lobby', { cache: 'no-store' }).then((r) => r.json());
+    ws.close(); await sleep(200);
+    return l.waiting && l.head !== h.boss || l;
+  });
   await check('IA : difficile > moyen > facile, pas de NaN, matchs finis', () => {
     let hm = 0, me = 0, bad = 0;
     for (let g = 0; g < 8; g++) {
@@ -57,7 +97,7 @@
   });
   await check('IA difficile bat un joueur immobile', () => match(0, 3, [null, 2]).win === 1);
   await check('en ligne : hôte, commandes de l’invité, départ', async () => {
-    h.toMenu(); h.chooseMenu(4); h.tap(h.consts.W / 2, 222); await sleep(300);
+    h.toMenu(); h.chooseMenu(2); h.tap(h.consts.W / 2, 222); await sleep(300);
     const g = new WebSocket('ws://' + location.host + '/ws'); let snaps = 0;
     g.onmessage = (e) => { if (JSON.parse(e.data).t === 's') snaps++; };
     await new Promise((r) => { g.onopen = r; });

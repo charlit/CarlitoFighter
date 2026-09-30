@@ -64,7 +64,8 @@ function makeSprite(img) {
   return c;
 }
 CHARS.forEach((h) => { h.img = new Image(); h.img.onload = () => { h.sprite = makeSprite(h.img); }; h.img.src = h.src; });
-const BOSS = 3;
+const BOSS = 3; // Le Boss n'est pas jouable : c'est le dernier adversaire de l'aventure
+const PICKABLE = CHARS.map((_, k) => k).filter((k) => k !== BOSS);
 const COLORS = [{ main: '#ff3b3b', dark: '#8a1520' }, { main: '#2f7bff', dark: '#15307a' }];
 
 // Coups : st = images de préparation, act = images actives, rec = récupération. hb = zone de frappe [x devant, y, largeur, hauteur]
@@ -102,7 +103,7 @@ function fitCanvas() {
 addEventListener('resize', fitCanvas);
 
 // ================= modes =================
-// mode : 'ai' (arcade contre l'ordinateur), 'local' (2 joueurs, même écran), 'online' (contre un joueur en ligne)
+// mode : 'ai' (aventure contre l'ordinateur), 'local' (2 joueurs, même écran), 'online' (contre un joueur en ligne)
 let mode = 'local', aiLevel = 1;
 let me = 0;                       // joueur contrôlé par cet appareil en solo / en ligne (1 = invité en ligne)
 const aiSlots = [null, null];     // niveau d'IA de chaque joueur (null = humain)
@@ -112,16 +113,21 @@ const AI_LEVELS = [
   { name: 'Difficile', think: 5, block: 0.85, atk: 0.85, sp: 0.4, anti: 0.85, idle: 0 },
 ];
 const MENU = [
-  { label: 'ARCADE · FACILE', mode: 'ai', lvl: 0, c: '#3ddc84' },
-  { label: 'ARCADE · MOYEN', mode: 'ai', lvl: 1, c: '#ffd93d' },
-  { label: 'ARCADE · DIFFICILE', mode: 'ai', lvl: 2, c: '#ff3b3b' },
+  { label: 'AVENTURE', mode: 'ai', c: '#ffd93d' },
   { label: '2 JOUEURS · MÊME ÉCRAN', mode: 'local', c: '#2f7bff' },
   { label: 'EN LIGNE', mode: 'online', c: '#ff7ad9' },
 ];
-const pillRect = (k) => ({ x: W / 2 - 240, y: 150 + k * 64, w: 480, h: 52 });
-const gridPos = (k) => ({ x: W / 2 + ((k % 3) - 1) * 128, y: 222 + Math.floor(k / 3) * 128 });
-let menuSel = 0;
-// arcade : on enchaîne les 5 autres personnages, Le Boss en dernier
+// page suivante de l'aventure : la difficulté
+const LEVELS = [
+  { label: 'FACILE', sub: 'Pour découvrir les coups', c: '#3ddc84' },
+  { label: 'MOYEN', sub: 'Il faut savoir parer', c: '#ffd93d' },
+  { label: 'DIFFICILE', sub: 'Le Boss ne pardonne rien', c: '#ff3b3b' },
+];
+const pillRect = (k) => ({ x: W / 2 - 240, y: 160 + k * 84, w: 480, h: 62 });
+// grille de choix : 3 persos en haut, 2 en bas (j = rang dans PICKABLE)
+const gridPos = (j) => j < 3 ? { x: W / 2 + (j - 1) * 128, y: 222 } : { x: W / 2 + (j - 3.5) * 128, y: 350 };
+let menuSel = 0, levelSel = 1;
+// aventure : on affronte les 4 autres personnages jouables, puis Le Boss en dernier
 let ladder = [], ladderIdx = 0;
 
 // ================= entrées =================
@@ -328,7 +334,7 @@ let frame = 0, cd = 0, vsT = 0, koT = 0, endT = 0, shake = 0, hitstop = 0;
 let round = 1, roundWin = -1, koMsg = '', perfect = false, endNote = '', waitMsg = '';
 let timeLeft = ROUND_TIME;
 const wins = [0, 0];
-const pick = [0, BOSS], ready = [false, false];
+const pick = [0, 5], ready = [false, false];
 const players = [0, 1].map((i) => ({ i, c: pick[i], x: 0, y: GROUND, f: 1, hp: 100, hpShow: 100, st: 'free', move: null, t: 0, px: 0, walkT: 0, alpha: 1, ai: {} }));
 const projectiles = [];
 const particles = [];
@@ -370,18 +376,20 @@ function pollLobby() {
   return fetch('api/lobby', { cache: 'no-store' }).then((r) => r.json()).then((j) => { lobby = j; }).catch(() => { lobby = null; });
 }
 setInterval(() => { if (state === 'menu' && !document.hidden) pollLobby(); }, 3000);
-function toSelect() { state = 'select'; ready[0] = ready[1] = false; particles.length = 0; touches.clear(); }
+function toSelect() {
+  pick.forEach((k, i) => { if (!PICKABLE.includes(k)) pick[i] = PICKABLE[i ? PICKABLE.length - 1 : 0]; });
+  state = 'select'; ready[0] = ready[1] = false; particles.length = 0; touches.clear(); }
 function chooseMenu(k) {
   const m = MENU[k]; menuSel = k;
-  mode = m.mode; if (m.mode === 'ai') aiLevel = m.lvl;
-  sfx.tick(); toSelect();
+  mode = m.mode; sfx.tick();
+  if (m.mode === 'ai') state = 'level'; else toSelect();
 }
+function chooseLevel(l) { aiLevel = levelSel = l; mode = 'ai'; sfx.tick(); toSelect(); }
 function confirmSolo() {
   sfx.tick();
   if (mode === 'ai') {
     me = 0; aiSlots[0] = null; aiSlots[1] = aiLevel;
-    const others = CHARS.map((_, k) => k).filter((k) => k !== pick[0] && k !== BOSS).sort(() => Math.random() - 0.5);
-    ladder = pick[0] === BOSS ? others : others.concat(BOSS); ladderIdx = 0;
+    ladder = PICKABLE.filter((k) => k !== pick[0]).sort(() => Math.random() - 0.5).concat(BOSS); ladderIdx = 0;
     pick[1] = ladder[0];
     startMatch();
   } else goOnline();
@@ -389,7 +397,7 @@ function confirmSolo() {
 function afterEnd() {
   if (mode === 'online') return toMenu();
   if (mode === 'local') return toSelect();
-  // arcade : on passe à l'adversaire suivant si on a gagné, sinon on retente le même
+  // aventure : on passe à l'adversaire suivant si on a gagné, sinon on retente le même
   if (matchWinner() === 0) {
     if (++ladderIdx >= ladder.length) return toMenu();
     pick[1] = ladder[ladderIdx];
@@ -406,12 +414,16 @@ function uiKey(code) {
     if (is('up')) { menuSel = (menuSel + MENU.length - 1) % MENU.length; sfx.tick(); }
     if (is('down')) { menuSel = (menuSel + 1) % MENU.length; sfx.tick(); }
     if (ok) chooseMenu(menuSel);
+  } else if (state === 'level') {
+    if (is('up')) { levelSel = (levelSel + 2) % 3; sfx.tick(); }
+    if (is('down')) { levelSel = (levelSel + 1) % 3; sfx.tick(); }
+    if (ok) chooseLevel(levelSel);
   } else if (state === 'select') {
     const move = (i, maps) => {
-      const k = pick[i];
-      if (is('left', maps)) pick[i] = (k + 5) % 6;
-      else if (is('right', maps)) pick[i] = (k + 1) % 6;
-      else if (is('up', maps) || is('down', maps)) pick[i] = (k + 3) % 6;
+      const j = PICKABLE.indexOf(pick[i]), n = PICKABLE.length;
+      if (is('left', maps)) pick[i] = PICKABLE[(j + n - 1) % n];
+      else if (is('right', maps)) pick[i] = PICKABLE[(j + 1) % n];
+      else if (is('up', maps) || is('down', maps)) pick[i] = PICKABLE[j < 3 ? Math.min(j + 3, n - 1) : j - 3];
       else return;
       sfx.tick();
     };
@@ -447,10 +459,14 @@ function uiTap(pt) {
   const inR = (r) => pt.x >= r.x && pt.x <= r.x + r.w && pt.y >= r.y && pt.y <= r.y + r.h;
   if (state === 'menu') {
     MENU.forEach((_, k) => { if (inR(pillRect(k))) chooseMenu(k); });
+  } else if (state === 'level') {
+    if (inR({ x: 0, y: 0, w: 150, h: 56 })) { sfx.tick(); toMenu(); return; }
+    LEVELS.forEach((_, k) => { if (inR(pillRect(k))) chooseLevel(k); });
   } else if (state === 'select') {
     if (inR({ x: 0, y: 0, w: 150, h: 56 })) { sfx.tick(); toMenu(); return; }
-    const k = CHARS.findIndex((_, kk) => { const g = gridPos(kk); return Math.abs(pt.x - g.x) < 60 && Math.abs(pt.y - g.y) < 60; });
-    if (k < 0) return;
+    const j = PICKABLE.findIndex((_, jj) => { const g = gridPos(jj); return Math.abs(pt.x - g.x) < 60 && Math.abs(pt.y - g.y) < 60; });
+    if (j < 0) return;
+    const k = PICKABLE[j];
     if (mode === 'local') {
       const i = ready[0] ? 1 : 0;
       pick[i] = k; ready[i] = true; sfx.tick();
@@ -492,7 +508,7 @@ function closeNet() {
 function onNet(m) {
   if (m.t === 'start') {
     net.role = me = m.role === 1 ? 1 : 0;
-    pick[0] = clamp(m.heads[0] | 0, 0, 5); pick[1] = clamp(m.heads[1] | 0, 0, 5);
+    pick[0] = PICKABLE.includes(m.heads[0]) ? m.heads[0] : PICKABLE[0]; pick[1] = PICKABLE.includes(m.heads[1]) ? m.heads[1] : PICKABLE[0];
     aiSlots[0] = aiSlots[1] = null;
     startMatch();
   } else if (m.t === 'in' && net.role === 0) net.remote = m;
@@ -1131,15 +1147,29 @@ function drawTitle(y = 72, s = 70) {
   outlinedText('CARLITO FIGHTER', 0, 0, '#ffd93d', 10);
   ctx.restore();
 }
+function pill(r, c, sel, label, sub) {
+  ctx.fillStyle = sel ? c : 'rgba(27,27,47,0.85)'; ctx.strokeStyle = sel ? '#fff' : c; ctx.lineWidth = 4;
+  ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 30); ctx.fill(); ctx.stroke();
+  ctx.font = font(28); outlinedText(label, W / 2, r.y + r.h / 2 + (sub ? -8 : 2), sel ? '#fff' : c, 6);
+  if (sub) { ctx.font = font(14); outlinedText(sub, W / 2, r.y + r.h / 2 + 18, '#fff', 4); }
+}
+function drawLevel() {
+  dim(0.6); drawTitle(56, 56);
+  ctx.font = font(18); outlinedText('← MENU', 70, 28, '#fff', 5);
+  ctx.font = font(24); outlinedText('AVENTURE · choisis la difficulté', W / 2, 118, '#fff', 6);
+  LEVELS.forEach((l, k) => pill(pillRect(k), l.c, k === levelSel && !touchMode, l.label, l.sub));
+  // le Boss attend au bout du chemin
+  drawHead(CHARS[BOSS], W - 140, 330 + Math.sin(frame / 12) * 5, -1, 150, Math.sin(frame / 20) * 0.06);
+  ctx.font = font(16); outlinedText('Le Boss t’attend…', W - 140, 425, '#ff5b5b', 5);
+  if (!touchMode) { ctx.font = font(14); outlinedText('↑ ↓ pour choisir · Entrée pour valider · Échap : menu', W / 2, 468, '#fff', 4); }
+}
 function drawMenu() {
   dim(0.55); drawTitle();
   ctx.font = font(18); outlinedText('Le tournoi des grosses têtes', W / 2, 118, '#fff', 5);
   MENU.forEach((m, k) => {
     const r = pillRect(k), sel = k === menuSel && !touchMode;
-    ctx.fillStyle = sel ? m.c : 'rgba(27,27,47,0.85)'; ctx.strokeStyle = sel ? '#fff' : m.c; ctx.lineWidth = 4;
-    ctx.beginPath(); ctx.roundRect(r.x, r.y, r.w, r.h, 26); ctx.fill(); ctx.stroke();
     const someone = m.mode === 'online' && lobby && lobby.waiting;
-    ctx.font = font(26); outlinedText(someone ? 'EN LIGNE · 1 JOUEUR ATTEND !' : m.label, W / 2, r.y + r.h / 2 + 2, sel ? '#fff' : m.c, 6);
+    pill(r, m.c, sel, someone ? 'EN LIGNE · 1 JOUEUR ATTEND !' : m.label);
     if (someone) {
       ctx.globalAlpha = 0.6 + Math.sin(frame / 6) * 0.4; ctx.fillStyle = '#3ddc84'; ctx.strokeStyle = OUTLINE; ctx.lineWidth = 3;
       ctx.beginPath(); ctx.arc(r.x + 30, r.y + r.h / 2, 9, 0, 7); ctx.fill(); ctx.stroke(); ctx.globalAlpha = 1;
@@ -1180,10 +1210,10 @@ function drawPanel(i, x) {
 function drawSelect() {
   dim(); drawTitle(46, 52);
   ctx.font = font(18); outlinedText('← MENU', 70, 28, '#fff', 5);
-  const sub = mode === 'local' ? 'Choisissez vos combattants !' : mode === 'ai' ? 'Arcade · IA ' + AI_LEVELS[aiLevel].name + ' · choisis ton combattant' : 'En ligne · choisis ton combattant';
+  const sub = mode === 'local' ? 'Choisissez vos combattants !' : mode === 'ai' ? 'Aventure · IA ' + AI_LEVELS[aiLevel].name + ' · choisis ton combattant' : 'En ligne · choisis ton combattant';
   ctx.font = font(20); outlinedText(sub, W / 2, 104, '#fff', 5);
-  CHARS.forEach((ch, k) => {
-    const { x, y } = gridPos(k);
+  PICKABLE.forEach((k, j) => {
+    const ch = CHARS[k], { x, y } = gridPos(j);
     ctx.fillStyle = 'rgba(255,255,255,0.12)'; ctx.beginPath(); ctx.roundRect(x - 58, y - 58, 116, 116, 14); ctx.fill();
     drawHead(ch, x, y - 6, 1, 88);
     ctx.font = font(15); outlinedText(ch.name, x, y + 46, '#fff', 4);
@@ -1232,7 +1262,25 @@ function drawVs() {
   ctx.save(); ctx.translate(W / 2, 250); const s = Math.min(1, vsT / 30) * (1 + Math.sin(frame / 5) * 0.04); ctx.scale(s, s); ctx.rotate(-0.08);
   ctx.font = font(130); outlinedText('VS', 0, 0, '#ffd93d', 14); ctx.restore();
   ctx.font = font(22); outlinedText('📍 ' + STAGES[stage].name, W / 2, 490, '#fff', 6);
-  if (mode === 'ai') { ctx.font = font(24); outlinedText('COMBAT ' + (ladderIdx + 1) + ' / ' + ladder.length + (pick[1] === BOSS && ladderIdx === ladder.length - 1 ? ' · COMBAT FINAL !' : ''), W / 2, 40, '#fff', 6); }
+  if (mode === 'ai') drawPath();
+}
+// aventure : la suite des adversaires en haut de l'écran VS (battus ✔, celui du combat, Le Boss au bout)
+function drawPath() {
+  const n = ladder.length, gap = 74, x0 = W / 2 - (n - 1) * gap / 2;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 4; ctx.setLineDash([8, 8]);
+  ctx.beginPath(); ctx.moveTo(x0, 36); ctx.lineTo(x0 + (n - 1) * gap, 36); ctx.stroke(); ctx.setLineDash([]);
+  ladder.forEach((k, j) => {
+    const x = x0 + j * gap, cur = j === ladderIdx, boss = k === BOSS;
+    ctx.fillStyle = cur ? '#ffd93d' : boss ? '#8a1520' : 'rgba(27,27,47,.9)';
+    ctx.beginPath(); ctx.arc(x, 36, cur ? 30 : 25, 0, 7); ctx.fill(); ctx.strokeStyle = '#fff'; ctx.lineWidth = 3; ctx.stroke();
+    ctx.globalAlpha = j < ladderIdx ? 0.45 : 1;
+    drawHead(CHARS[k], x, 36, -1, cur ? 50 : 40);
+    ctx.globalAlpha = 1;
+    if (j < ladderIdx) { ctx.font = font(26); outlinedText('✔', x + 16, 50, '#3ddc84', 5); }
+    if (boss) { ctx.font = font(12); outlinedText('BOSS', x, 70, '#ff5b5b', 4); }
+  });
+  ctx.font = font(20);
+  outlinedText('COMBAT ' + (ladderIdx + 1) + ' / ' + n + (ladder[ladderIdx] === BOSS ? ' · COMBAT FINAL !' : ''), W / 2, 96, '#fff', 5);
 }
 function bigText(t, y, col, size, k = 1) {
   ctx.save(); ctx.translate(W / 2, y); ctx.scale(k, k); ctx.rotate(-0.04);
@@ -1289,6 +1337,7 @@ function render() {
 
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   if (state === 'menu') drawMenu();
+  else if (state === 'level') drawLevel();
   else if (state === 'select') drawSelect();
   else if (state === 'wait') drawWait();
   else if (state === 'vs') drawVs();
@@ -1325,7 +1374,7 @@ requestAnimationFrame(loop);
 
 if (DEBUG) {
   window.__hb = {
-    consts: { W, H, GROUND, ROUND_TIME, WIN_ROUNDS }, chars: CHARS, moves: MOVES, menu: MENU, aiLevels: AI_LEVELS, stages: STAGES,
+    consts: { W, H, GROUND, ROUND_TIME, WIN_ROUNDS }, chars: CHARS, pickable: PICKABLE, boss: BOSS, gridPos, moves: MOVES, menu: MENU, levels: LEVELS, aiLevels: AI_LEVELS, stages: STAGES,
     // start(a, b, { mode, ai: [niveau J1, niveau J2] }) : combat direct, écran VS et « FIGHT » sautés
     start(a = 0, b = 3, o = {}) {
       toMenu(); mode = o.mode || 'local'; pick[0] = a; pick[1] = b;
@@ -1334,7 +1383,7 @@ if (DEBUG) {
       ladder = [b]; ladderIdx = 0;
       startMatch(); startRound(); cd = 1; step();
     },
-    toMenu, toSelect, chooseMenu, key: uiKey, tap: (x, y) => uiTap({ x, y }),
+    toMenu, toSelect, chooseMenu, chooseLevel, key: uiKey, tap: (x, y) => uiTap({ x, y }),
     run(n = 1) { for (let i = 0; i < n; i++) step(); },
     // touches : left right up down p k s
     press(i, k) { dbgHeld.add(i + ':' + k); }, release(i, k) { dbgHeld.delete(i + ':' + k); }, releaseAll() { dbgHeld.clear(); },

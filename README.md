@@ -2,8 +2,9 @@
 
 Jeu de combat façon *Street Fighter 2*, avec les grosses têtes de Carlito Soccer. Trois façons de jouer :
 
-- **Arcade contre l'IA** (facile, moyen, difficile) : on enchaîne les 5 autres combattants, **Le Boss** en dernier.
-  Perdu ? On retente le même adversaire.
+- **Aventure contre l'IA** : on choisit AVENTURE, puis la difficulté sur la page suivante (facile, moyen, difficile), puis on affronte un à un les 4 autres
+  combattants et enfin **Le Boss**. L'écran VS montre le parcours (adversaires battus ✔, combat en cours, Le Boss au bout).
+  Perdu ? On retente le même adversaire. **Le Boss n'est pas jouable** (ni en aventure, ni à 2, ni en ligne).
 - **2 joueurs sur le même écran** (clavier ou un téléphone/tablette partagé) ;
 - **En ligne** : on attend qu'un autre joueur choisisse « En ligne », le combat démarre tout seul
   (l'accueil affiche quand quelqu'un attend déjà).
@@ -20,7 +21,7 @@ les joueurs en ligne (WebSocket).
 | **Carlito** | équilibré | Rayon de soleil : boule qui traverse l'écran | Plage |
 | **Moustache** | très rapide, frappe fort | Charge moustache : fonce et met au sol | Rue de Paris |
 | **Nono** | karatéka | Super uppercut : contre les sauts (on l'évite accroupi) | Dojo |
-| **Le Boss** | lent, costaud, beaucoup de vie | Tremblement : onde au sol, il faut sauter | Toit du building |
+| **Le Boss** (non jouable, dernier adversaire de l'aventure) | lent, costaud, beaucoup de vie | Tremblement : onde au sol, il faut sauter | Toit du building |
 | **Éclipse** | aérien | Éclipse totale : disparaît et frappe dans le dos | Désert de l'éclipse |
 | **Maxou** | endurant | Tornade de feu : plusieurs coups en avançant | Volcan |
 
